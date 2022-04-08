@@ -10,7 +10,12 @@ export const updateParsedHtml = (htmlList, pack) => {
       innerHTML: htmlList[i].innerHTML,
       attributes: [
         { attribute: "class", value: "component" },
-        { attribute: "src", value: pack.components[htmlList[i].tag].src },
+        {
+          attribute: "src",
+          value: pack.defaultSrc
+            ? pack.defaultSrc + pack.components[htmlList[i].tag].src
+            : pack.components[htmlList[i].tag].src,
+        },
         ...htmlList[i].attributes,
       ],
     };
