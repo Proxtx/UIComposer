@@ -34,6 +34,8 @@ export const updateParsedHtml = async (htmlList, pack, build, load, Parser) => {
         })
     );
     t.parentElement.replaceChild(component.element, t);
+    for (let i of t.attributes) component.element.setAttribute(i.name, i.value);
+    component.element.component = component;
   }
 
   return wrap;
