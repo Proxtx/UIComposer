@@ -1,44 +1,56 @@
-export const updateParsedHtml = async (htmlList, pack, build, load, Parser) => {
-  supplementParsedHtml(htmlList, pack);
-  let buildHtml = build(htmlList);
+const updateParsedHtml = (options) => {
+  supplementParsedHtml(options.htmlList, options.pack);
+  options.initResolve = [];
+  let buildHtml = options.libs.build(options.htmlList);
   let wrap = document.createElement("div");
   for (let i of buildHtml) wrap.appendChild(i);
-  for (let t of wrap.getElementsByClassName("component")) {
-    let attributes = {};
-    t.getAttributeNames().forEach(
-      (value) => (attributes[value] = t.getAttribute(value))
-    );
-    let component = await load(t.getAttribute("src"))(attributes);
-    component.load().then(async () => {
-      let updatedHtml = await updateHtml(
-        component.element.contentDocument.body.innerHTML,
-        Parser,
-        pack,
-        build,
-        load
-      );
-      for (let i of component.element.contentDocument.body.children) {
-        component.element.contentDocument.body.removeChild(i);
-      }
-      component.element.contentDocument.body.appendChild(updatedHtml);
-    });
-    component.load().then(
-      () =>
-        (component.element.contentWindow.composer = {
-          updateParsedHtml,
-          updateHtml,
-          pack,
-          build,
-          load,
-          Parser,
-        })
-    );
-    t.parentElement.replaceChild(component.element, t);
-    for (let i of t.attributes) component.element.setAttribute(i.name, i.value);
-    component.element.component = component;
-  }
-
+  for (let componentElement of wrap.getElementsByClassName("component"))
+    generateComponent(componentElement, options);
+  Promise.all(options.initResolve).then(() => {
+    options.init && options.init();
+  });
   return wrap;
+};
+
+const generateComponent = (componentElem, options) => {
+  let attributes = { element: null };
+  componentElem
+    .getAttributeNames()
+    .forEach(
+      (value) => (attributes[value] = componentElem.getAttribute(value))
+    );
+  let component = options.libs.load(componentElem.getAttribute("src"))(
+    attributes
+  );
+  for (let i of Object.keys(attributes))
+    component.element.setAttribute(i, attributes[i]);
+  attributes.element = componentElem;
+  component.element.setAttribute("class", "");
+  component.element.component = component;
+  componentElem.parentElement.replaceChild(component.element, componentElem);
+  options.initResolve.push(new Promise((r) => component.init(r)));
+
+  component.load(async () => {
+    let doc = component.element.contentDocument;
+    let initResolver;
+    let componentWrap = doc.getElementById("componentWrap");
+    let updatedHtml = updateHtml({
+      html: componentWrap.innerHTML,
+      pack: options.pack,
+      libs: options.libs,
+      init: () => {
+        initResolver();
+      },
+    });
+
+    for (let i of componentWrap.childNodes) {
+      componentWrap.removeChild(i);
+    }
+    for (let i of updatedHtml.childNodes) {
+      componentWrap.appendChild(i);
+    }
+    await new Promise((r) => (initResolver = r));
+  });
 };
 
 const supplementParsedHtml = (htmlList, pack) => {
@@ -65,16 +77,13 @@ const supplementParsedHtml = (htmlList, pack) => {
   }
 };
 
-export const updateHtml = async (html, Parser, pack, build, load) => {
-  let htmlParser = new Parser();
-  for (let i in pack.components) {
-    if (!pack.components[i].needsClosingTag)
+export const updateHtml = (options) => {
+  let htmlParser = new options.libs.Parser();
+  for (let i of Object.keys(options.pack.components))
+    if (options.pack.components[i].selfClosing)
       htmlParser.selfClosingTags.push(i.toLowerCase());
-  }
 
-  let parsedHtml = htmlParser.parse(html);
+  options.htmlList = htmlParser.parse(options.html);
 
-  let buildHtml = await updateParsedHtml(parsedHtml, pack, build, load, Parser);
-
-  return buildHtml;
+  return updateParsedHtml(options);
 };
